@@ -1,0 +1,551 @@
+<title>Wharton Commute Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column; controls, then charts that share a start-time axis, then the plan and the why. */
+:root {
+  --bg: #f4f5f3;
+  --surface: #fcfcfb;
+  --ink: #111513;
+  --ink-2: #4a514d;
+  --muted: #7b827e;
+  --grid: #e2e5e1;
+  --axis: #c2c7c3;
+  --accent: #0a6b4b;          /* interstate guide-sign green: the recommended pick */
+  --accent-soft: #dcefe6;
+  --warn: #9a5b00;
+  --unreach: #eaece8;
+  --morning: #a7b3c1;         /* two neutral slate steps: parts of one round trip */
+  --evening: #56677b;
+  --bad: #9a6a55;
+  --d-mon: #2a78d6; --d-tue: #eb6834; --d-wed: #1baf7a; --d-thu: #eda100; --d-fri: #e87ba4;
+  --ring: rgba(17,21,19,0.10);
+  --font-display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1110; --surface: #181b19; --ink: #eef1ef; --ink-2: #bfc6c1; --muted: #8b928e;
+    --grid: #282c29; --axis: #3a3f3c; --accent: #4cc38a; --accent-soft: #163327; --warn: #e0a24a;
+    --unreach: #20231f; --morning: #3d4752; --evening: #8596ab; --bad: #c9937c;
+    --d-mon: #3987e5; --d-tue: #d95926; --d-wed: #199e70; --d-thu: #c98500; --d-fri: #d55181;
+    --ring: rgba(255,255,255,0.10);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1110; --surface: #181b19; --ink: #eef1ef; --ink-2: #bfc6c1; --muted: #8b928e;
+  --grid: #282c29; --axis: #3a3f3c; --accent: #4cc38a; --accent-soft: #163327; --warn: #e0a24a;
+  --unreach: #20231f; --morning: #3d4752; --evening: #8596ab; --bad: #c9937c;
+  --d-mon: #3987e5; --d-tue: #d95926; --d-wed: #199e70; --d-thu: #c98500; --d-fri: #d55181;
+  --ring: rgba(255,255,255,0.10);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 920px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 56px; display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: clamp(2.1rem, 5vw, 3rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.45rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.82rem; color: var(--muted); }
+.lead { font-size: 1.08rem; color: var(--ink-2); }
+.hl { color: var(--accent); }
+header { display: grid; gap: 10px; }
+
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--grid); border: 1px solid var(--grid); border-radius: 10px; overflow: hidden; margin-top: 8px; }
+.fact { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; min-width: 0; }
+.fact dt { font-size: 0.8rem; color: var(--muted); }
+.fact dd { margin: 0; font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; line-height: 1.15; }
+.fact small { color: var(--ink-2); font-size: 0.84rem; }
+@media (max-width: 640px) { .facts { grid-template-columns: 1fr; } }
+
+.controls { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: end; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 10px; border-bottom: 1px solid var(--grid); }
+.ctl { display: grid; gap: 6px; min-width: 0; }
+.ctl label, .ctl .lbl { font-size: 0.8rem; color: var(--muted); }
+.slider-row { display: flex; align-items: center; gap: 12px; }
+.slider-row output { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; min-width: 5.2ch; font-variant-numeric: tabular-nums; }
+input[type="range"] { width: min(340px, 62vw); accent-color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 0.86rem; padding: 6px 12px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--axis); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg button:focus-visible, .chip:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip { font: inherit; font-size: 0.82rem; border: 1px solid var(--axis); background: transparent; color: var(--ink-2); border-radius: 99px; padding: 3px 10px; cursor: pointer; }
+
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 18px 18px 14px; display: grid; gap: 10px; min-width: 0; }
+.card .sub { color: var(--ink-2); font-size: 0.92rem; }
+.chart { position: relative; width: 100%; min-width: 0; }
+.chart svg { display: block; width: 100%; overflow: visible; touch-action: pan-y; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.84rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-rect { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.key-line { width: 16px; height: 2px; border-radius: 2px; display: inline-block; }
+
+svg text { font-family: var(--font-body); font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+svg .lbl-strong { fill: var(--ink); font-weight: 600; font-size: 12px; }
+svg .lbl-2 { fill: var(--ink-2); font-size: 11.5px; }
+svg .lbl-accent { fill: var(--accent); font-weight: 600; font-size: 12px; }
+svg .lbl-in { font-weight: 600; font-size: 12px; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.baseline { stroke: var(--axis); stroke-width: 1; }
+.unreach { fill: var(--unreach); }
+.a-morning { fill: var(--morning); }
+.a-evening { fill: var(--evening); }
+.gap { stroke: var(--surface); stroke-width: 2; fill: none; }
+.l-bad { stroke: var(--bad); stroke-width: 1.5; fill: none; }
+.l-ink { stroke: var(--ink); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.l-faint { stroke: var(--muted); stroke-width: 2; fill: none; opacity: 0.55; }
+.sel { stroke: var(--accent); stroke-width: 1.5; }
+.dot-accent { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.dot-ink { fill: var(--ink); stroke: var(--surface); stroke-width: 2; }
+.cross { stroke: var(--ink-2); stroke-width: 1; opacity: 0.6; }
+.window { fill: var(--accent-soft); }
+.freeflow { stroke: var(--ink-2); stroke-width: 1; opacity: 0.6; }
+
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--ring); box-shadow: 0 6px 20px rgba(0,0,0,0.12); border-radius: 8px; padding: 8px 10px; font-size: 0.82rem; min-width: 180px; max-width: 260px; z-index: 4; }
+.tip .t-head { font-weight: 600; margin-bottom: 4px; }
+.tip .row { display: flex; justify-content: space-between; gap: 12px; color: var(--ink-2); }
+.tip .row b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tip .note { color: var(--warn); margin-top: 4px; }
+.tip .k { display: inline-flex; align-items: center; gap: 6px; }
+
+.panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.panel h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 2px; }
+@media (max-width: 700px) { .panels { grid-template-columns: 1fr; } }
+
+.plan-grid { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 24px; }
+@media (max-width: 760px) { .plan-grid { grid-template-columns: 1fr; } }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 500; color: var(--muted); font-size: 0.78rem; }
+tr.is-best td { background: var(--accent-soft); }
+tr.is-off td { color: var(--muted); }
+.pill { display: inline-block; font-size: 0.74rem; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; }
+.pill.ok { color: var(--accent); }
+.pill.no { color: var(--warn); }
+.status { font-size: 0.9rem; color: var(--ink-2); }
+.status.no { color: var(--warn); }
+
+.sdo-list { display: grid; gap: 8px; }
+.sdo-row { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) 4.6em; align-items: center; gap: 10px; font-size: 0.88rem; }
+.sdo-bar { height: 10px; background: var(--grid); border-radius: 0 4px 4px 0; position: relative; }
+.sdo-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--evening); border-radius: 0 4px 4px 0; }
+.sdo-row.best .sdo-bar i { background: var(--accent); }
+.sdo-row b { font-weight: 600; }
+.sdo-row span:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+
+details { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 12px 16px; }
+summary { cursor: pointer; font-weight: 600; }
+details[open] summary { margin-bottom: 10px; }
+footer { color: var(--ink-2); font-size: 0.88rem; display: grid; gap: 8px; }
+footer h2 { font-size: 1.1rem; color: var(--ink); }
+footer ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; max-width: 72ch; }
+@media (prefers-reduced-motion: no-preference) { .sdo-bar i { transition: width 0.25s ease; } }
+</style>
+
+<main class="wrap">
+  <header>
+    <p class="eyebrow">5/4-9 schedule · River Vale to 213 NJ-15, Wharton</p>
+    <h1 id="headline">Start at 8:30am</h1>
+    <p class="lead" id="lead"></p>
+    <dl class="facts">
+      <div class="fact"><dt>Earliest start you can make</dt><dd id="f-earliest"></dd><small id="f-earliest-note"></small></div>
+      <div class="fact"><dt>Best start, round trip per workday</dt><dd id="f-best"></dd><small id="f-best-note"></small></div>
+      <div class="fact"><dt>Best vs worst start in your window</dt><dd id="f-range"></dd><small id="f-range-note"></small></div>
+    </dl>
+  </header>
+
+  <div class="controls" role="group" aria-label="Chart controls">
+    <div class="ctl">
+      <label for="start">Shift start (try one)</label>
+      <div class="slider-row">
+        <input type="range" id="start" min="390" max="510" step="1">
+        <output id="start-out" for="start"></output>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="lbl" id="unit-lbl">Show commuting</span>
+      <div class="seg" role="group" aria-labelledby="unit-lbl">
+        <button type="button" data-unit="day" aria-pressed="true">Per workday</button>
+        <button type="button" data-unit="pp" aria-pressed="false">Per pay period</button>
+        <button type="button" data-unit="yr" aria-pressed="false">Per year</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="card" aria-labelledby="c1-title">
+    <h2 id="c1-title">Commute time by shift start</h2>
+    <p class="sub">Each start time uses its best SDO and 8-hour day. Later starts make mornings worse and evenings better, so the two parts mostly cancel out.</p>
+    <div class="legend">
+      <span><i class="key-rect" style="background:var(--morning)"></i>Morning drive</span>
+      <span><i class="key-rect" style="background:var(--evening)"></i>Evening drive</span>
+      <span><i class="key-line" style="background:var(--bad)"></i>Bad day (Google pessimistic)</span>
+      <span><i class="key-rect" style="background:var(--unreach);border:1px solid var(--axis)"></i>Needs leaving home before 6:45am</span>
+    </div>
+    <div class="chart" id="c1"></div>
+  </section>
+
+  <section class="card" aria-labelledby="c2-title">
+    <h2 id="c2-title">What each start time costs you</h2>
+    <p class="sub" id="c2-sub"></p>
+    <div class="chart" id="c2"></div>
+  </section>
+
+  <section class="card" aria-labelledby="plan-title">
+    <h2 id="plan-title">Your week at <span id="plan-start"></span></h2>
+    <p class="status" id="plan-status"></p>
+    <div class="plan-grid">
+      <div class="scroll"><table id="plan-table" aria-label="Daily plan for the selected start"></table></div>
+      <div>
+        <h3 style="font-size:1rem;font-weight:600;margin-bottom:8px">SDO choice at this start</h3>
+        <div class="sdo-list" id="sdo-list"></div>
+        <p class="sub" style="margin-top:10px;font-size:0.84rem" id="sdo-note"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="c3-title">
+    <h2 id="c3-title">Why: predicted drive time by departure</h2>
+    <p class="sub">Google's typical-week prediction for each weekday. The green band is when you'd be leaving for start times you can make. Tuesday is worst in both directions. Evening traffic peaks from 4:15 to 5:15pm and drops after 6pm, which is why later starts win back time on the drive home.</p>
+    <div class="legend" id="c3-legend"></div>
+    <div class="panels">
+      <div class="panel"><h3>Leaving home</h3><div class="chart" id="c3am"></div></div>
+      <div class="panel"><h3>Leaving the gate</h3><div class="chart" id="c3pm"></div></div>
+    </div>
+  </section>
+
+  <details>
+    <summary>All start times (table)</summary>
+    <div class="scroll"><table id="all-table"></table></div>
+  </details>
+
+  <footer>
+    <h2>How this was worked out</h2>
+    <ul id="method"></ul>
+  </footer>
+</main>
+
+<script>
+const DATA = __DATA__;
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DAY_NAMES = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday" };
+const A = DATA.assumptions;
+const PP = A.pay_periods_per_year;
+const starts = DATA.starts;
+const byStart = new Map(starts.map(s => [s.start, s]));
+const feasible = starts.filter(s => s.feasible);
+const best = feasible.reduce((a, b) => (b.total < a.total ? b : a));
+const worstFeasible = feasible.reduce((a, b) => (b.total > a.total ? b : a));
+const overall = starts.reduce((a, b) => (b.total < a.total ? b : a));
+const earliest = feasible[0];
+const X0 = starts[0].start, X1 = starts[starts.length - 1].start;
+
+const state = { unit: "day", start: best.start };
+try { const u = localStorage.getItem("wcp-unit"); if (["day", "pp", "yr"].includes(u)) state.unit = u; } catch (e) {}
+
+// ---------- formatting ----------
+function clock(m) {
+  m = Math.round(m);
+  const h = Math.floor(m / 60), mm = m % 60;
+  return `${((h + 11) % 12) + 1}:${String(mm).padStart(2, "0")}${h < 12 ? "am" : "pm"}`;
+}
+const UNITS = {
+  day: { conv: t => t / 9, fmt: v => `${v.toFixed(1)} min`, short: v => `${Math.round(v)}`, axis: "min per workday (round trip)", delta: v => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)} min/day` },
+  pp: { conv: t => t, fmt: v => `${Math.round(v)} min`, short: v => `${Math.round(v)}`, axis: "min per pay period (9 workdays)", delta: v => `${v >= 0 ? "+" : "−"}${Math.abs(Math.round(v))} min/pay period` },
+  yr: { conv: t => (t * PP) / 60, fmt: v => `${v.toFixed(0)} h`, short: v => `${Math.round(v)}`, axis: `hours per year (${PP} pay periods)`, delta: v => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)} h/yr` },
+};
+const U = () => UNITS[state.unit];
+
+// ---------- svg helpers ----------
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function txt(parent, x, y, s, attrs = {}) { const t = el("text", { x, y, ...attrs }, parent); t.textContent = s; return t; }
+function scale(d0, d1, r0, r1) { const f = v => r0 + ((v - d0) / (d1 - d0)) * (r1 - r0); f.inv = p => d0 + ((p - r0) / (r1 - r0)) * (d1 - d0); return f; }
+function niceStep(span, count) {
+  const raw = span / count, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / p;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * p;
+}
+function ticks(lo, hi, count) { const s = niceStep(hi - lo, count); const out = []; for (let v = Math.floor(lo / s) * s; v < hi + s - 1e-9; v += s) out.push(+v.toFixed(6)); return out; }
+function anchorAt(f, px, gap = 8) { const right = px > f.x0 + (f.x1 - f.x0) * 0.62; return { x: right ? px - gap : px + gap, "text-anchor": right ? "end" : "start" }; }
+function path(pts) { return pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join(""); }
+function frame(container, height, m) {
+  container.textContent = "";
+  const w = Math.max(280, container.clientWidth);
+  const svg = el("svg", { viewBox: `0 0 ${w} ${height}`, height, role: "img" }, container);
+  return { svg, w, h: height, x0: m.l, x1: w - m.r, y0: height - m.b, y1: m.t };
+}
+function timeTicks(lo, hi, every) { const out = []; for (let t = Math.ceil(lo / every) * every; t <= hi; t += every) out.push(t); return out; }
+function xAxis(f, x, lo, hi, every) {
+  el("line", { x1: f.x0, x2: f.x1, y1: f.y0, y2: f.y0, class: "baseline" }, f.svg);
+  for (const t of timeTicks(lo, hi, every)) txt(f.svg, x(t), f.y0 + 16, clock(t).replace(":00", ""), { "text-anchor": "middle" });
+}
+
+// ---------- tooltip ----------
+function makeTip(container) { const d = document.createElement("div"); d.className = "tip"; d.hidden = true; container.appendChild(d); return d; }
+function placeTip(tip, container, px, py) {
+  tip.hidden = false;
+  const cw = container.clientWidth, tw = tip.offsetWidth;
+  let left = px + 14; if (left + tw > cw) left = px - tw - 14; if (left < 0) left = 0;
+  tip.style.left = left + "px"; tip.style.top = Math.max(0, py - 10) + "px";
+}
+function tipRow(tip, label, value, key) {
+  const r = document.createElement("div"); r.className = "row";
+  const l = document.createElement("span"); l.className = "k";
+  if (key) { const i = document.createElement("i"); i.className = "key-line"; i.style.background = key; l.appendChild(i); }
+  l.appendChild(document.createTextNode(label));
+  const b = document.createElement("b"); b.textContent = value;
+  r.append(l, b); tip.appendChild(r);
+}
+function startTip(tip, s) {
+  tip.textContent = "";
+  const h = document.createElement("div"); h.className = "t-head"; h.textContent = `Start ${clock(s.start)}`; tip.appendChild(h);
+  const u = U();
+  tipRow(tip, "Total", u.fmt(u.conv(s.total)));
+  tipRow(tip, "Morning", u.fmt(u.conv(s.am)), "var(--morning)");
+  tipRow(tip, "Evening", u.fmt(u.conv(s.pm)), "var(--evening)");
+  tipRow(tip, "Bad day", u.fmt(u.conv(s.bad)), "var(--bad)");
+  tipRow(tip, "vs best", u.delta(u.conv(s.total) - u.conv(best.total)));
+  tipRow(tip, "Leave home", `${clock(s.leave_home[0])}–${clock(s.leave_home[1])}`);
+  tipRow(tip, "Home by", `${clock(s.home_by[0])}–${clock(s.home_by[1])}`);
+  tipRow(tip, "SDO / 8-hr day", `${s.sdo} / ${s.short}`);
+  if (!s.feasible) { const n = document.createElement("div"); n.className = "note"; n.textContent = `Needs leaving home at ${clock(s.leave_home[0])}`; tip.appendChild(n); }
+}
+function hoverLayer(f, x, container, onMove, onClick) {
+  const tip = makeTip(container);
+  const cross = el("line", { y1: f.y1, y2: f.y0, class: "cross", visibility: "hidden" }, f.svg);
+  const hit = el("rect", { x: f.x0, y: f.y1, width: f.x1 - f.x0, height: f.y0 - f.y1, fill: "transparent" }, f.svg);
+  function at(ev) {
+    const r = f.svg.getBoundingClientRect();
+    const px = ((ev.clientX - r.left) / r.width) * f.w;
+    return { px, py: ((ev.clientY - r.top) / r.height) * f.h, t: x.inv(px) };
+  }
+  hit.addEventListener("pointermove", ev => {
+    const p = at(ev); const snapX = onMove(tip, p.t);
+    if (snapX == null) return;
+    cross.setAttribute("x1", x(snapX)); cross.setAttribute("x2", x(snapX)); cross.setAttribute("visibility", "visible");
+    placeTip(tip, container, (x(snapX) / f.w) * container.clientWidth, (p.py / f.h) * container.clientHeight);
+  });
+  hit.addEventListener("pointerleave", () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); });
+  if (onClick) hit.addEventListener("click", ev => onClick(at(ev).t));
+}
+function snapStart(t) { return Math.min(X1, Math.max(X0, Math.round(t))); }
+
+// ---------- chart 1: stacked morning/evening ----------
+function drawC1() {
+  const box = document.getElementById("c1");
+  const f = frame(box, 300, { l: 44, r: 16, t: 26, b: 28 });
+  const u = U();
+  const x = scale(X0, X1, f.x0, f.x1);
+  const maxV = Math.max(...starts.map(s => u.conv(s.bad)));
+  const yt = ticks(0, maxV * 1.08, 4);
+  const y = scale(0, yt[yt.length - 1], f.y0, f.y1);
+  for (const v of yt) { el("line", { x1: f.x0, x2: f.x1, y1: y(v), y2: y(v), class: "gridline" }, f.svg); txt(f.svg, f.x0 - 6, y(v) + 4, u.short(v), { "text-anchor": "end" }); }
+  txt(f.svg, f.x0, f.y1 - 12, u.axis, { class: "lbl-2" });
+  const am = starts.map(s => [x(s.start), y(u.conv(s.am))]);
+  const tot = starts.map(s => [x(s.start), y(u.conv(s.total))]);
+  el("path", { d: path(am) + `L${x(X1)},${f.y0}L${x(X0)},${f.y0}Z`, class: "a-morning" }, f.svg);
+  el("path", { d: path(tot) + path(am.slice().reverse()).replace("M", "L") + "Z", class: "a-evening" }, f.svg);
+  el("path", { d: path(am), class: "gap" }, f.svg);
+  el("path", { d: path(starts.map(s => [x(s.start), y(u.conv(s.bad))])), class: "l-bad" }, f.svg);
+  el("rect", { x: x(X0), y: f.y1, width: x(earliest.start) - x(X0), height: f.y0 - f.y1, fill: "var(--surface)", opacity: 0.62 }, f.svg);
+  xAxis(f, x, X0, X1, 30);
+  // in-area labels where the reachable window begins
+  const lx = x(earliest.start + 18), ls = byStart.get(earliest.start + 18);
+  txt(f.svg, lx, (y(0) + y(u.conv(ls.am))) / 2 + 4, "Morning", { class: "lbl-in", fill: "var(--ink)" });
+  txt(f.svg, lx, (y(u.conv(ls.am)) + y(u.conv(ls.total))) / 2 + 4, "Evening", { class: "lbl-in", style: "fill:var(--surface)" });
+  txt(f.svg, (x(X0) + x(earliest.start)) / 2, f.y0 - 10, "Can't make these", { class: "lbl-strong", "text-anchor": "middle" });
+  // bad-day label, inside the reachable window
+  const bl = byStart.get(Math.round((earliest.start + X1) / 2));
+  txt(f.svg, x(bl.start), y(u.conv(bl.bad)) - 7, "Bad day", { class: "lbl-2", "text-anchor": "middle" });
+  // selection + best marker
+  const sel = byStart.get(state.start);
+  el("line", { x1: x(sel.start), x2: x(sel.start), y1: f.y1, y2: f.y0, class: "sel" }, f.svg);
+  el("circle", { cx: x(best.start), cy: y(u.conv(best.total)), r: 5, class: "dot-accent" }, f.svg);
+  txt(f.svg, x(best.start) - 8, y(u.conv(best.total)) - 10, `Best you can make: ${clock(best.start)}`, { "text-anchor": "end", class: "lbl-accent" });
+  hoverLayer(f, x, box, (tip, t) => { const s = byStart.get(snapStart(t)); startTip(tip, s); return s.start; }, t => setStart(snapStart(t)));
+}
+
+// ---------- chart 2: delta vs best ----------
+function drawC2() {
+  const box = document.getElementById("c2");
+  const f = frame(box, 230, { l: 52, r: 16, t: 24, b: 28 });
+  const u = U();
+  const x = scale(X0, X1, f.x0, f.x1);
+  const d = s => u.conv(s.total) - u.conv(best.total);
+  const vals = starts.map(d);
+  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const pad = (hi - lo) * 0.12;
+  const yt = ticks(lo - pad, hi + pad, 5);
+  const y = scale(yt[0], yt[yt.length - 1], f.y0, f.y1);
+  el("rect", { x: x(X0), y: f.y1, width: x(earliest.start) - x(X0), height: f.y0 - f.y1, class: "unreach" }, f.svg);
+  for (const v of yt) {
+    el("line", { x1: f.x0, x2: f.x1, y1: y(v), y2: y(v), class: v === 0 ? "baseline" : "gridline" }, f.svg);
+    txt(f.svg, f.x0 - 6, y(v) + 4, (v > 0 ? "+" : v < 0 ? "−" : "") + u.short(Math.abs(v)), { "text-anchor": "end" });
+  }
+  txt(f.svg, f.x0, f.y1 - 10, `${u.axis.split(" (")[0]} more than starting at ${clock(best.start)}`, { class: "lbl-2" });
+  const pre = starts.filter(s => s.start <= earliest.start), post = starts.filter(s => s.start >= earliest.start);
+  el("path", { d: path(pre.map(s => [x(s.start), y(d(s))])), class: "l-faint" }, f.svg);
+  el("path", { d: path(post.map(s => [x(s.start), y(d(s))])), class: "l-ink" }, f.svg);
+  xAxis(f, x, X0, X1, 30);
+  // labels: worst in window, best, unreachable min
+  el("circle", { cx: x(worstFeasible.start), cy: y(d(worstFeasible)), r: 4, class: "dot-ink" }, f.svg);
+  txt(f.svg, 0, y(d(worstFeasible)) - 9, `${u.delta(d(worstFeasible))} at ${clock(worstFeasible.start)}`, { class: "lbl-strong", ...anchorAt(f, x(worstFeasible.start), 0) });
+  el("circle", { cx: x(best.start), cy: y(0), r: 5, class: "dot-accent" }, f.svg);
+  el("circle", { cx: x(overall.start), cy: y(d(overall)), r: 4, class: "dot-ink" }, f.svg);
+  txt(f.svg, x(overall.start) + 9, y(d(overall)) - 6, `${u.delta(d(overall))} at ${clock(overall.start)}`, { class: "lbl-2" });
+  const sel = byStart.get(state.start);
+  el("line", { x1: x(sel.start), x2: x(sel.start), y1: f.y1, y2: f.y0, class: "sel" }, f.svg);
+  hoverLayer(f, x, box, (tip, t) => { const s = byStart.get(snapStart(t)); startTip(tip, s); return s.start; }, t => setStart(snapStart(t)));
+  const span = d(worstFeasible);
+  document.getElementById("c2-sub").textContent =
+    `Inside your window (${clock(earliest.start)}–${clock(X1)}), the worst start costs ${u.delta(span).replace("+", "")} more than the best. ` +
+    `The 6:45am limit itself costs more: a 6:30 start would save ${u.delta(-d(overall)).replace("+", "")} compared with ${clock(best.start)}.`;
+}
+
+// ---------- chart 3: raw curves ----------
+const DAY_VAR = { Mon: "var(--d-mon)", Tue: "var(--d-tue)", Wed: "var(--d-wed)", Thu: "var(--d-thu)", Fri: "var(--d-fri)" };
+function drawCurves(id, dir) {
+  const box = document.getElementById(id);
+  const f = frame(box, 240, { l: 36, r: 12, t: 16, b: 28 });
+  const curves = DATA.curves[dir];
+  const all = Object.values(DATA.curves).flatMap(c => Object.values(c).flat().map(p => p[1]));
+  const yt = ticks(Math.floor(Math.min(...all) / 5) * 5, Math.max(...all) + 1, 4);
+  const y = scale(yt[0], yt[yt.length - 1], f.y0, f.y1);
+  const pts = curves.Mon, lo = pts[0][0], hi = pts[pts.length - 1][0];
+  const x = scale(lo, hi, f.x0, f.x1);
+  // window of departures for reachable start times
+  let wlo, whi;
+  if (dir === "AM") { wlo = Math.min(...feasible.map(s => s.leave_home[0])); whi = Math.max(...feasible.map(s => s.leave_home[1])); }
+  else { wlo = earliest.leave_gate; whi = byStart.get(X1).leave_gate; }
+  el("rect", { x: x(wlo), y: f.y1, width: Math.max(2, x(whi) - x(wlo)), height: f.y0 - f.y1, class: "window" }, f.svg);
+  for (const v of yt) { el("line", { x1: f.x0, x2: f.x1, y1: y(v), y2: y(v), class: "gridline" }, f.svg); txt(f.svg, f.x0 - 6, y(v) + 4, v, { "text-anchor": "end" }); }
+  const ff = DATA.free_flow[dir.toLowerCase()];
+  el("line", { x1: f.x0, x2: f.x1, y1: y(ff), y2: y(ff), class: "freeflow" }, f.svg);
+  txt(f.svg, f.x1, dir === "AM" ? y(ff) - 5 : y(ff) + 13, `no traffic ≈ ${Math.round(ff)} min`, { "text-anchor": "end" });
+  for (const d of DAYS) el("path", { d: path(curves[d].map(p => [x(p[0]), y(p[1])])), fill: "none", stroke: DAY_VAR[d], "stroke-width": 2, "stroke-linejoin": "round" }, f.svg);
+  xAxis(f, x, lo, hi, 60);
+  txt(f.svg, f.x0, f.y1 - 4, "min", {});
+  // selected start's departure
+  const sel = byStart.get(state.start);
+  const st = dir === "AM" ? (sel.leave_home[0] + sel.leave_home[1]) / 2 : sel.leave_gate;
+  if (st >= lo && st <= hi) el("line", { x1: x(st), x2: x(st), y1: f.y1, y2: f.y0, class: "sel" }, f.svg);
+  // label the worst line at its peak
+  let peak = { v: 0 };
+  for (const d of DAYS) for (const p of curves[d]) if (p[1] > peak.v) peak = { v: p[1], t: p[0], d };
+  txt(f.svg, 0, y(peak.v) - 7, `${DAY_NAMES[peak.d]} peak ${Math.round(peak.v)} min`, { class: "lbl-2", ...anchorAt(f, x(peak.t), 0) });
+  hoverLayer(f, x, box, (tip, t) => {
+    const i = Math.max(0, Math.min(pts.length - 1, Math.round((t - lo) / (pts[1][0] - pts[0][0]))));
+    tip.textContent = "";
+    const h = document.createElement("div"); h.className = "t-head"; h.textContent = `${dir === "AM" ? "Leave home" : "Leave gate"} ${clock(pts[i][0])}`; tip.appendChild(h);
+    for (const d of DAYS) tipRow(tip, d, `${curves[d][i][1].toFixed(1)} min`, DAY_VAR[d]);
+    return pts[i][0];
+  });
+}
+function drawLegend3() {
+  const lg = document.getElementById("c3-legend"); lg.textContent = "";
+  for (const d of DAYS) { const s = document.createElement("span"); const i = document.createElement("i"); i.className = "key-line"; i.style.background = DAY_VAR[d]; s.append(i, document.createTextNode(DAY_NAMES[d])); lg.appendChild(s); }
+  const s = document.createElement("span"); const i = document.createElement("i"); i.className = "key-rect"; i.style.background = "var(--accent-soft)"; s.append(i, document.createTextNode("When you'd be leaving")); lg.appendChild(s);
+}
+
+// ---------- plan for selected start ----------
+function cell(tr, text, tag = "td") { const c = document.createElement(tag); c.textContent = text; tr.appendChild(c); return c; }
+function drawPlan() {
+  const s = byStart.get(state.start);
+  document.getElementById("plan-start").textContent = clock(s.start);
+  const st = document.getElementById("plan-status");
+  st.className = "status" + (s.feasible ? "" : " no");
+  st.textContent = s.feasible
+    ? `SDO ${DAY_NAMES[s.sdo]}, 8-hour day on ${DAY_NAMES[s.short]}. ${(s.total / 9).toFixed(1)} min round trip per workday, ${Math.round(s.total)} min per pay period.`
+    : `Not workable: you'd need to leave home by ${clock(s.leave_home[0])}, before your 6:45am limit.`;
+  const t = document.getElementById("plan-table"); t.textContent = "";
+  const hr = document.createElement("tr"); ["Day", "Leave home", "Drive in", "Leave gate", "Drive home", "Home by"].forEach(h => cell(hr, h, "th")); t.appendChild(hr);
+  const rows = [];
+  for (const d of DAYS) {
+    const [lh, am, pm9, pm8] = s.days[d];
+    rows.push([d === s.sdo ? `${d} · off alt. weeks` : d, clock(lh), `${Math.round(am)} min`, clock(s.leave_gate), `${Math.round(pm9)} min`, clock(s.leave_gate + pm9), d === s.sdo]);
+    if (d === s.short) rows.push([`${d} · 8-hr day`, clock(lh), `${Math.round(am)} min`, clock(s.leave_gate - 60), `${Math.round(pm8)} min`, clock(s.leave_gate - 60 + pm8)]);
+  }
+  for (const r of rows) { const tr = document.createElement("tr"); r.slice(0, 6).forEach(v => cell(tr, v)); t.appendChild(tr); }
+  const cap = document.createElement("caption"); cap.className = "sub"; cap.style.cssText = "caption-side:bottom;text-align:left;padding-top:8px;font-size:0.82rem";
+  cap.textContent = `A pay period is 9 workdays: each weekday twice, minus one ${DAY_NAMES[s.sdo]} (your SDO). One ${DAY_NAMES[s.short]} is your 8-hour day.`;
+  t.prepend(cap);
+  // SDO bars
+  const list = document.getElementById("sdo-list"); list.textContent = "";
+  const opts = DAYS.map(d => ({ d, t: s.sdo_options[d][0], e: s.sdo_options[d][1] }));
+  const min = Math.min(...opts.map(o => o.t)), max = Math.max(...opts.map(o => o.t));
+  for (const o of opts) {
+    const row = document.createElement("div"); row.className = "sdo-row" + (o.d === s.sdo ? " best" : "");
+    const a = document.createElement("b"); a.textContent = o.d;
+    const bar = document.createElement("div"); bar.className = "sdo-bar"; const i = document.createElement("i");
+    i.style.width = max > min ? `${4 + ((o.t - min) / (max - min)) * 96}%` : "4%"; bar.appendChild(i);
+    const v = document.createElement("span"); v.textContent = o.t - min < 0.5 ? "best" : `+${Math.round(o.t - min)} min`;
+    row.title = `SDO ${DAY_NAMES[o.d]}: ${Math.round(o.t)} min per pay period, 8-hour day ${o.e}`;
+    row.append(a, bar, v); list.appendChild(row);
+  }
+  document.getElementById("sdo-note").textContent = `Extra minutes per pay period vs the best SDO, each with its best 8-hour day. The spread is ${Math.round(max - min)} min, so the SDO barely matters at this start.`;
+}
+
+// ---------- full table ----------
+function drawAll() {
+  const t = document.getElementById("all-table"); t.textContent = "";
+  const hr = document.createElement("tr");
+  ["Start", "", "Leave home", "Leave gate", "Home by", "Min/day", "Min/pay period", "Bad day/pay period", "SDO", "8-hr day"].forEach(h => cell(hr, h, "th"));
+  t.appendChild(hr);
+  for (const s of starts.filter(s => s.start % 5 === 0 || s.start === earliest.start)) {
+    const tr = document.createElement("tr"); if (s.start === best.start) tr.className = "is-best"; else if (!s.feasible) tr.className = "is-off";
+    cell(tr, clock(s.start));
+    const c = cell(tr, ""); const p = document.createElement("span"); p.className = "pill " + (s.feasible ? "ok" : "no"); p.textContent = s.start === best.start ? "best" : s.feasible ? "ok" : "too early"; c.appendChild(p);
+    [`${clock(s.leave_home[0])}–${clock(s.leave_home[1])}`, clock(s.leave_gate), `${clock(s.home_by[0])}–${clock(s.home_by[1])}`, (s.total / 9).toFixed(1), Math.round(s.total), Math.round(s.bad), s.sdo, s.short].forEach(v => cell(tr, String(v)));
+    t.appendChild(tr);
+  }
+}
+
+// ---------- header + method ----------
+function drawHeader() {
+  document.getElementById("headline").textContent = `Start at ${clock(best.start)}`;
+  document.getElementById("lead").textContent =
+    `SDO ${DAY_NAMES[best.sdo]} and your 8-hour day on ${DAY_NAMES[best.short]}. Leaving home no earlier than 6:45am, start time changes your commute by under 2 minutes a day across the window you can make. ` +
+    `Pick by when you want to get home: an ${clock(best.start)} start has you home around ${clock(best.home_by[1])}, and a ${clock(earliest.start)} start around ${clock(earliest.home_by[1])}.`;
+  document.getElementById("f-earliest").textContent = clock(earliest.start);
+  document.getElementById("f-earliest-note").textContent = `Leaving at 6:45 gets you to the gate by ${clock(earliest.start - A.buffer)} on a Tuesday`;
+  document.getElementById("f-best").textContent = `${(best.total / 9).toFixed(1)} min`;
+  document.getElementById("f-best-note").textContent = `${clock(best.start)} start · ${Math.round(best.total)} min per pay period`;
+  const span = worstFeasible.total - best.total;
+  document.getElementById("f-range").textContent = `${Math.round(span)} min`;
+  document.getElementById("f-range-note").textContent = `per pay period · ${(span / 9).toFixed(1)} min/day · ${((span * PP) / 60).toFixed(0)} h/yr`;
+  const m = document.getElementById("method"); m.textContent = "";
+  [
+    "Drive times come from the Google Maps Routes API (traffic-aware, best-guess and pessimistic models), sampled every 5 minutes for each weekday in both directions. All routes ran on I-80.",
+    "Google's future predictions are a typical-week pattern by weekday and time of day. They do not change with season, school calendar, or weather, so treat these as a normal week.",
+    `Each start time assumes a ${A.lunch}-minute unpaid lunch and ${A.buffer} minutes between the gate and your desk each way. 9-hour days end ${9}h${A.lunch}m after the start, the 8-hour day ${8}h${A.lunch}m after.`,
+    "Each start uses the same time every day, its best SDO, and its best 8-hour day. A pay period has 9 workdays. Per year assumes 26 pay periods and ignores holidays and leave.",
+    "Bad day uses Google's pessimistic model for the same departure times.",
+  ].forEach(s => { const li = document.createElement("li"); li.textContent = s; m.appendChild(li); });
+}
+
+// ---------- state ----------
+const slider = document.getElementById("start"), out = document.getElementById("start-out");
+function setStart(v) { state.start = v; slider.value = v; out.textContent = clock(v); drawCharts(); drawPlan(); }
+function drawCharts() { drawC1(); drawC2(); drawCurves("c3am", "AM"); drawCurves("c3pm", "PM"); }
+slider.addEventListener("input", () => setStart(+slider.value));
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  state.unit = b.dataset.unit;
+  document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  try { localStorage.setItem("wcp-unit", state.unit); } catch (e) {}
+  drawCharts();
+}));
+document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.unit === state.unit)));
+drawHeader(); drawLegend3(); drawAll(); setStart(best.start);
+let rz; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(drawCharts, 80); }).observe(document.querySelector(".wrap"));
+</script>
