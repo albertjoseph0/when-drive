@@ -30,7 +30,7 @@ FIELD_MASK = "routes.duration,routes.staticDuration,routes.distanceMeters,routes
 # time-of-day patterns (the same 7:15 Tuesday query returns identical results
 # for Oct, Jan and Jul), so one ordinary, holiday-free week is representative.
 WEEK_START = date(2026, 10, 19)  # Monday
-AM_WINDOW = ("05:00", "08:25")  # leaving home
+AM_WINDOW = ("05:00", "08:55")  # leaving home
 PM_WINDOW = ("14:45", "19:00")  # leaving work
 STEP_MIN = 5
 MODELS = ("BEST_GUESS", "PESSIMISTIC")
